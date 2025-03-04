@@ -1,0 +1,74 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: S3 Buckets With CDN For Product and Lifecycle Rules
+
+Parameters:
+  environment:
+    Type: String
+    AllowedValues:
+      - dev
+      - stage
+      - qa
+      - prod
+      - pre-prod
+  product:
+    Type: String
+  service:
+    Type: String
+
+Conditions:
+  AddLifecycleRule: !Equals [!Ref service, "backend-logs"]
+
+Resources:
+  S3Bucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+        IgnorePublicAcls: true
+        BlockPublicAcls: true
+      BucketName: !Sub '${environment}-${product}-${service}'
+      AccessControl: Private
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: error.html
+      LifecycleConfiguration:
+        Fn::If:
+          - AddLifecycleRule
+          - Rules:
+              - Id: !Sub "${environment}-${product}-${service}-expire-rule"
+                Status: Enabled
+                ExpirationInDays: 30  # Expires all objects in the bucket after 30 days
+          - !Ref "AWS::NoValue"
+
+  S3BucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      Bucket: !Ref S3Bucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: PolicyForPrivateContent
+            Effect: Allow
+            Principal: '*'
+            Action: 's3:*'
+            Resource: !Sub 'arn:aws:s3:::${S3Bucket}/*'
+            Condition:
+              StringEquals:
+                aws:sourceVpce: !ImportValue 
+                  Fn::Sub: "${environment}-${product}-vpc-vpcEndpoint"
+
+Outputs:
+  S3Bucket:
+    Description: S3 Bucket
+    Value: !Ref S3Bucket
+    Export: 
+      Name: !Sub "${environment}-${product}-${service}-bucket"
+  
+  LifecycleRule:
+    Condition: AddLifecycleRule
+    Description: S3 Lifecycle Rule
+    Value: !Sub "${environment}-${product}-${service}-expire-rule"
+    Export:
+      Name: !Sub "${environment}-${product}-${service}-lifecycle-rule"
+
