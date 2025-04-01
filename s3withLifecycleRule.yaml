@@ -10,13 +10,21 @@ Parameters:
       - qa
       - prod
       - pre-prod
+      - shared
   product:
     Type: String
   service:
     Type: String
+  enableLifecycleRule:
+    Type: String
+    AllowedValues:
+      - "true"
+      - "false"
+  expirationInDays:
+    Type: Number
 
 Conditions:
-  AddLifecycleRule: !Equals [!Ref service, "backend-logs"]
+  ApplyLifecycleRule: !Equals [!Ref enableLifecycleRule, "true"]
 
 Resources:
   S3Bucket:
@@ -34,11 +42,11 @@ Resources:
         ErrorDocument: error.html
       LifecycleConfiguration:
         Fn::If:
-          - AddLifecycleRule
+          - ApplyLifecycleRule
           - Rules:
               - Id: !Sub "${environment}-${product}-${service}-expire-rule"
                 Status: Enabled
-                ExpirationInDays: 30  # Expires all objects in the bucket after 30 days
+                ExpirationInDays: !Ref expirationInDays
           - !Ref "AWS::NoValue"
 
   S3BucketPolicy:
@@ -63,12 +71,4 @@ Outputs:
     Description: S3 Bucket
     Value: !Ref S3Bucket
     Export: 
-      Name: !Sub "${environment}-${product}-${service}-bucket"
-  
-  LifecycleRule:
-    Condition: AddLifecycleRule
-    Description: S3 Lifecycle Rule
-    Value: !Sub "${environment}-${product}-${service}-expire-rule"
-    Export:
-      Name: !Sub "${environment}-${product}-${service}-lifecycle-rule"
-
+      Name: !Sub "${environment}-${product}-${service}"
